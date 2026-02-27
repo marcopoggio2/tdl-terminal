@@ -556,13 +556,48 @@ composer.addEventListener('keydown',(e)=>{
       els.listRoot.appendChild(section);
     });
   }
+// ===== automatic daily rollover =====
+function autoRolloverIfNeeded(activeDate){
+  const s = load();
+  const today = activeDate;
 
+  if(s.lastAutoRollDate === today) return; // already rolled today
+
+  // Find previous date that had tasks
+  const allDates = s.tasks.map(t => t.dueDate).filter(Boolean);
+  if(allDates.length === 0){
+    s.lastAutoRollDate = today;
+    save(s);
+    return;
+  }
+
+  const mostRecentDate = allDates.sort().slice(-1)[0];
+  if(mostRecentDate >= today){
+    s.lastAutoRollDate = today;
+    save(s);
+    return;
+  }
+
+  // Roll unfinished tasks forward to today
+  s.tasks.forEach(t=>{
+    if(t.dueDate === mostRecentDate && !t.done){
+      t.dueDate = today;
+    }
+  });
+
+  s.lastAutoRollDate = today;
+  save(s);
+}
   // ===== controls =====
   function clearDayTasks(date){ const d=date||els.activeDay.value||todayStr(); const s=load(); s.tasks=s.tasks.filter(t=>t.dueDate!==d); save(s); render(s,d); }
   function rolloverNow(date){ const d=date||els.activeDay.value||todayStr(); const next=nextDateStr(d); const s=load(); s.tasks.forEach(t=>{ if(t.dueDate===d && !t.done){ t.dueDate=next; } }); const adhoc=s.adHocByDate[next]=s.adHocByDate[next]||[]; s.tasks.filter(t=>t.dueDate===next && !PERMANENT.includes(t.category)).forEach(t=>{ const nm=(t.category||'').trim(); if(nm && !adhoc.map(x=>x.toLowerCase()).includes(nm.toLowerCase())) adhoc.push(nm); }); save(s); render(s,d); }
 
   // ===== wire UI =====
-  els.activeDay.addEventListener('change',()=>{ const s=load(); render(s,els.activeDay.value||todayStr()); });
+  els.activeDay.addEventListener('change',()=>{
+  const date = els.activeDay.value || todayStr();
+  autoRolloverIfNeeded(date);
+  render(load(), date);
+});
   els.btnClearDay.addEventListener('click',()=>{ const d=els.activeDay.value||todayStr(); if(confirm(`Clear ALL tasks for ${d}?`)) clearDayTasks(d); });
   els.btnRollover.addEventListener('click',()=>{ const d=els.activeDay.value||todayStr(); rolloverNow(d); alert(`Rescheduled unchecked tasks that were due on ${d} to the next day. (Overdue tasks keep their original dates.)`); });
 
@@ -585,8 +620,8 @@ composer.addEventListener('keydown',(e)=>{
   const t=todayStr();
   els.activeDay.value=t;
   els.newCategoryDate.value=t;
-  const s0=load();
-  render(s0,t);
+  autoRolloverIfNeeded(t);
+  render(load(), t);
   // Start optional remote sync (if firebaseConfig is filled)
   initRemoteSync(t);
 
