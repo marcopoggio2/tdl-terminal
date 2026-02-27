@@ -317,7 +317,7 @@ function save(s){
   function tasksForDate(state,dateStr){
     // Show tasks scheduled for the active day, PLUS any earlier (overdue) tasks that are not done.
     // IMPORTANT: We do NOT change dueDate for overdue tasks (preserves history).
-    return state.tasks.filter(t => (t.dueDate === dateStr) || ((t.dueDate < dateStr) && !t.done));
+    return state.tasks.filter(t => t.dueDate === dateStr);
   }
 
   // ===== inline edit =====
@@ -555,32 +555,37 @@ composer.addEventListener('keydown',(e)=>{
       els.listRoot.appendChild(section);
     });
   }
-// ===== automatic daily rollover =====
+// ===== automatic daily rollover (TRUE rollover) =====
+// Moves ALL unfinished overdue tasks (dueDate < activeDate) to activeDate.
+// Runs at most once per day via state.lastAutoRollDate.
 function autoRolloverIfNeeded(activeDate){
   const s = load();
   const today = activeDate;
 
-  if(s.lastAutoRollDate === today) return; // already rolled today
+  if (s.lastAutoRollDate === today) return; // already rolled today
 
-  // Find previous date that had tasks
-  const allDates = s.tasks.map(t => t.dueDate).filter(Boolean);
-  if(allDates.length === 0){
-    s.lastAutoRollDate = today;
-    save(s);
-    return;
-  }
-
-  const mostRecentDate = allDates.sort().slice(-1)[0];
-  if(mostRecentDate >= today){
-    s.lastAutoRollDate = today;
-    save(s);
-    return;
-  }
-
-  // Roll unfinished tasks forward to today
-  s.tasks.forEach(t=>{
-    if(t.dueDate === mostRecentDate && !t.done){
+  // Move every unfinished overdue task to today
+  s.tasks.forEach(t => {
+    if (!t) return;
+    if (!t.done && t.dueDate && t.dueDate < today) {
       t.dueDate = today;
+    }
+  });
+
+  // Make sure today's ad-hoc category list includes any moved task categories
+  s.adHocByDate[today] = s.adHocByDate[today] || [];
+  const todaysAdhoc = s.adHocByDate[today];
+  const seen = new Set(todaysAdhoc.map(x => (x || '').trim().toLowerCase()));
+
+  s.tasks.forEach(t => {
+    if (!t || t.dueDate !== today) return;
+    const cat = (t.category || '').trim();
+    if (!cat) return;
+    if (PERMANENT.includes(cat)) return;
+    const key = cat.toLowerCase();
+    if (!seen.has(key)) {
+      todaysAdhoc.push(cat);
+      seen.add(key);
     }
   });
 
