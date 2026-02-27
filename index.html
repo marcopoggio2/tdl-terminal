@@ -279,17 +279,22 @@
 
         remote.lastRemoteUpdatedAt = incomingUpdated;
         const merged = mergeLocalAndRemote(load(), incoming);
-        save(merged);
-        render(merged, activeDate);
+        saveLocalOnly(merged);
+        safeRender(merged, activeDate);
       });
     });
   }
   function load(){ const raw=localStorage.getItem(STORAGE_KEY); if(raw){ try{ return JSON.parse(raw); }catch(_){} } const init={adHocByDate:{},tasks:[]}; localStorage.setItem(STORAGE_KEY, JSON.stringify(init)); return init; }
-  function save(s){
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-    // If remote sync is enabled, push state (debounced).
-    try{ queueRemoteSave(s); }catch(_){}
-  }
+function saveLocalOnly(s){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+}
+
+function save(s){
+  // user-driven save: local + remote
+  saveLocalOnly(s);
+  // If remote sync is enabled, push state (debounced).
+  try{ queueRemoteSave(s); }catch(_){}
+}
   function categoriesForDate(state,dateStr){
     const adhoc = state.adHocByDate[dateStr] || [];
     const base = [...PERMANENT, ...adhoc];
@@ -458,7 +463,26 @@ stComposer.addEventListener('keydown',(e)=>{
     row.appendChild(del);
     return row;
   }
+let lastTypingAt = 0;
+let pendingRenderTimer = null;
 
+function markTyping(){
+  lastTypingAt = Date.now();
+}
+
+function safeRender(state, activeDate){
+  const now = Date.now();
+  const quietForMs = now - lastTypingAt;
+
+  // If the user typed very recently, delay rendering so inputs don't get wiped.
+  if (quietForMs < 800){
+    if (pendingRenderTimer) clearTimeout(pendingRenderTimer);
+    pendingRenderTimer = setTimeout(() => render(state, activeDate), 900);
+    return;
+  }
+  render(state, activeDate);
+}
+  
   // ===== render categories & list =====
   function render(state,activeDate){
     const root=els.listRoot; if(!root) return; root.innerHTML='';
